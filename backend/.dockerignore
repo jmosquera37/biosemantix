@@ -1,0 +1,32 @@
+# Artefactos locales y de entorno que no deben entrar en la imagen.
+
+# Entornos virtuales
+.venv/
+venv/
+
+# Bytecode y cachés de Python
+__pycache__/
+*.py[cod]
+*.pyo
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Archivos de variables de entorno (nunca deben viajar en la imagen)
+.env
+.env.*
+
+# Control de versiones y metadatos del editor
+.git/
+.gitignore
+.vscode/
+.idea/
+*.sw?
+
+# Documentación y registros
+*.md
+*.log
+
+# Configuración de Docker del propio contexto
+.dockerignore
+Dockerfile
