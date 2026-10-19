@@ -39,6 +39,7 @@ Estados globales (``status``):
     invalid_identifier  -> el formato del identificador no está admitido.
 """
 
+import os
 import re
 import time
 from urllib.parse import quote
@@ -47,16 +48,38 @@ import httpx
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+# Orígenes locales permitidos por defecto (desarrollo).
+DEFAULT_CORS_ALLOW_ORIGINS = [
+    "http://localhost:5173",
+    "http://127.0.0.1:5173",
+    "http://localhost:5174",
+    "http://127.0.0.1:5174",
+]
+
+
+def resolve_cors_origins(value: str | None) -> list[str]:
+    """Resuelve la lista de orígenes permitidos para CORS.
+
+    Lee ``CORS_ALLOW_ORIGINS`` (orígenes separados por comas). Si no se define
+    o queda vacía, conserva los orígenes locales por defecto. El comodín ``*``
+    nunca se admite: si solo se indican comodines, se usan los valores por
+    defecto.
+    """
+    if value is None or not value.strip():
+        return list(DEFAULT_CORS_ALLOW_ORIGINS)
+
+    origins = [origin.strip() for origin in value.split(",") if origin.strip()]
+    allowed = [origin for origin in origins if origin != "*"]
+
+    return allowed or list(DEFAULT_CORS_ALLOW_ORIGINS)
+
+
 app = FastAPI(title="BioSemantix API")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:5173",
-        "http://127.0.0.1:5173",
-        "http://localhost:5174",
-        "http://127.0.0.1:5174",
-    ],
+    allow_origins=resolve_cors_origins(os.environ.get("CORS_ALLOW_ORIGINS")),
+    allow_origin_regex=os.environ.get("CORS_ALLOW_ORIGIN_REGEX") or None,
     allow_credentials=False,
     allow_methods=["GET"],
     allow_headers=["*"],

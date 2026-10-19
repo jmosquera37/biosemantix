@@ -1,7 +1,26 @@
-const API_BASE = "http://127.0.0.1:8000";
+/** URL del backend usada en desarrollo local cuando no hay variable definida. */
+const DEFAULT_API_BASE_URL = "http://127.0.0.1:8000";
 
 /** Tiempo máximo que se espera al comprobar el backend (5 segundos). */
 const BACKEND_HEALTH_TIMEOUT_MS = 5000;
+
+/**
+ * Devuelve la URL base del backend de BioSemantix.
+ *
+ * Usa la variable de entorno ``VITE_API_BASE_URL`` cuando está definida
+ * (despliegue) y cae a ``http://127.0.0.1:8000`` en desarrollo local. El valor
+ * se recorta y se le quita la barra final para evitar rutas con doble barra.
+ */
+export function getApiBaseUrl(): string {
+  const configured = import.meta.env.VITE_API_BASE_URL;
+  const base = typeof configured === "string" ? configured.trim() : "";
+
+  if (!base) {
+    return DEFAULT_API_BASE_URL;
+  }
+
+  return base.replace(/\/+$/, "");
+}
 
 /** Tipo de identificador admitido por el backend. */
 export type QueryType =
@@ -145,7 +164,7 @@ export async function getGeneDetails(
   let response: Response;
   try {
     response = await fetch(
-      `${API_BASE}/api/genes/${encodeURIComponent(trimmed)}`
+      `${getApiBaseUrl()}/api/genes/${encodeURIComponent(trimmed)}`
     );
   } catch {
     throw new Error(
@@ -205,7 +224,7 @@ export async function checkBackendHealth(
   const timeout = setTimeout(() => controller.abort(), BACKEND_HEALTH_TIMEOUT_MS);
 
   try {
-    const response = await fetch(`${API_BASE}/`, {
+    const response = await fetch(`${getApiBaseUrl()}/`, {
       method: "GET",
       cache: "no-store",
       signal: controller.signal,

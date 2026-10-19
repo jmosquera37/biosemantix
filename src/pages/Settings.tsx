@@ -1,6 +1,7 @@
 import { CheckCircle, Laptop, RefreshCw, Server, WifiOff } from "lucide-react";
 
 import { useBackendStatus } from "../context/BackendStatusContext";
+import { getApiBaseUrl } from "../services/biosemantix";
 import { BACKEND_STATUS_LABELS } from "../utils/backendStatus";
 import type { BackendStatus } from "../utils/backendStatus";
 
@@ -37,7 +38,7 @@ function Settings() {
   } else if (status === "unavailable") {
     statusDetail =
       "No se pudo contactar con el backend. Verifica que el servicio " +
-      "esté en ejecución en http://127.0.0.1:8000.";
+      `esté disponible en ${getApiBaseUrl()}.`;
   }
 
   return (

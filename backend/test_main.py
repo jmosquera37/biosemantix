@@ -494,6 +494,68 @@ class TestUniProtAdapter(unittest.TestCase):
         self.assertEqual(src["status"], main.SOURCE_UNAVAILABLE)
 
 
+# ---------------------------------------------------------------------------
+# CORS configurable por entorno
+# ---------------------------------------------------------------------------
+
+
+class TestResolveCorsOrigins(unittest.TestCase):
+    def test_defaults_when_absent(self):
+        self.assertEqual(
+            main.resolve_cors_origins(None),
+            main.DEFAULT_CORS_ALLOW_ORIGINS,
+        )
+
+    def test_defaults_when_blank(self):
+        self.assertEqual(
+            main.resolve_cors_origins("   "),
+            main.DEFAULT_CORS_ALLOW_ORIGINS,
+        )
+
+    def test_parses_comma_separated_origins(self):
+        self.assertEqual(
+            main.resolve_cors_origins(
+                "https://a.example.test, https://b.example.test "
+            ),
+            ["https://a.example.test", "https://b.example.test"],
+        )
+
+    def test_wildcard_is_rejected(self):
+        self.assertEqual(
+            main.resolve_cors_origins("*"),
+            main.DEFAULT_CORS_ALLOW_ORIGINS,
+        )
+        self.assertEqual(
+            main.resolve_cors_origins("https://a.example.test,*"),
+            ["https://a.example.test"],
+        )
+
+
+class TestCorsMiddleware(unittest.TestCase):
+    def setUp(self):
+        self.client = TestClient(main.app)
+
+    def _preflight(self, origin):
+        return self.client.options(
+            "/api/genes/BRCA1",
+            headers={
+                "Origin": origin,
+                "Access-Control-Request-Method": "GET",
+            },
+        )
+
+    def test_local_origin_is_allowed(self):
+        response = self._preflight("http://localhost:5173")
+        self.assertEqual(
+            response.headers.get("access-control-allow-origin"),
+            "http://localhost:5173",
+        )
+
+    def test_unknown_origin_is_not_allowed(self):
+        response = self._preflight("https://dominio-ajeno.example")
+        self.assertIsNone(response.headers.get("access-control-allow-origin"))
+
+
 def asyncio_run(coro):
     """Ejecuta una corrutina sin depender de un bucle global."""
     import asyncio
