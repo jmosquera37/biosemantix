@@ -10,25 +10,28 @@ import Inicio from "./pages/Inicio";
 import FunctionalReport from "./pages/FunctionalReport";
 
 import { ExpressionDataProvider } from "./context/ExpressionDataContext";
+import { BackendStatusProvider } from "./context/BackendStatusContext";
 
 function App() {
   return (
     <BrowserRouter>
-      <ExpressionDataProvider>
-        <Layout>
-          <Routes>
-            <Route path="/" element={<Navigate to="/inicio" replace />} />
-            <Route path="/inicio" element={<Inicio />} />
-            <Route path="/cargar-datos" element={<UploadData />} />
-            <Route path="/resultados" element={<FunctionalReport />} />
-            <Route path="/bases-de-datos" element={<Databases />} />
-            <Route path="/configuracion" element={<Settings />} />
-            
+      <BackendStatusProvider>
+        <ExpressionDataProvider>
+          <Layout>
+            <Routes>
+              <Route path="/" element={<Navigate to="/inicio" replace />} />
+              <Route path="/inicio" element={<Inicio />} />
+              <Route path="/cargar-datos" element={<UploadData />} />
+              <Route path="/resultados" element={<FunctionalReport />} />
+              <Route path="/bases-de-datos" element={<Databases />} />
+              <Route path="/configuracion" element={<Settings />} />
+              
 
-            <Route path="*" element={<Navigate to="/inicio" replace />} />
-          </Routes>
-        </Layout>
-      </ExpressionDataProvider>
+              <Route path="*" element={<Navigate to="/inicio" replace />} />
+            </Routes>
+          </Layout>
+        </ExpressionDataProvider>
+      </BackendStatusProvider>
     </BrowserRouter>
   );
 }

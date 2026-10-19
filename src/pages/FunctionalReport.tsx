@@ -1,14 +1,68 @@
-
 import { useState } from "react";
-import { FileText, Search, AlertCircle, CheckCircle, Download} from "lucide-react";
+import {
+  FileText,
+  Search,
+  AlertCircle,
+  CheckCircle,
+  Download,
+  Info,
+  RefreshCw,
+  X,
+} from "lucide-react";
 import { useExpressionData } from "../context/ExpressionDataContext";
 import { getGeneDetails } from "../services/biosemantix";
-import type { GeneDetails } from "../services/biosemantix";
+import type {
+  GeneDetails,
+  SourceInfo,
+  SourceStatus,
+} from "../services/biosemantix";
+import {
+  buildReportCsv,
+  queryStatusLabel,
+  queryStatusTone,
+  reportCategory,
+  reportEntryMatchesQuery,
+  sourceStatusLabel,
+} from "../utils/report";
+import type { ReportStatusFilter, StatusTone } from "../utils/report";
 
 interface GeneResult {
   identifier: string;
   details?: GeneDetails;
   error?: string;
+}
+
+const SOURCE_TONES: Record<SourceStatus, StatusTone> = {
+  ok: "success",
+  not_found: "neutral",
+  unavailable: "warning",
+  error: "error",
+  malformed: "error",
+  skipped: "neutral",
+};
+
+function toneToMessageClass(tone: StatusTone): string {
+  switch (tone) {
+    case "error":
+      return "gene-message error";
+    case "warning":
+      return "gene-message partial";
+    case "info":
+      return "gene-message info";
+    default:
+      return "gene-message";
+  }
+}
+
+function SourceChip({ name, info }: { name: string; info: SourceInfo }) {
+  return (
+    <span
+      className={`source-status ${SOURCE_TONES[info.status] ?? "neutral"}`}
+      title={info.message ?? undefined}
+    >
+      {name}: {sourceStatusLabel(info.status)}
+    </span>
+  );
 }
 
 function FunctionalReport() {
@@ -18,6 +72,24 @@ function FunctionalReport() {
   const [loading, setLoading] = useState(false);
   const [progress, setProgress] = useState(0);
   const [hasSearched, setHasSearched] = useState(false);
+  const [retrying, setRetrying] = useState<number | null>(null);
+  const [search, setSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState<ReportStatusFilter>("all");
+
+  async function queryIdentifier(identifier: string): Promise<GeneResult> {
+    try {
+      const details = await getGeneDetails(identifier);
+      return { identifier, details };
+    } catch (error) {
+      return {
+        identifier,
+        error:
+          error instanceof Error
+            ? error.message
+            : "No fue posible consultar este identificador.",
+      };
+    }
+  }
 
   async function generateReport() {
     if (!geneListData || geneListData.genes.length === 0) return;
@@ -26,86 +98,43 @@ function FunctionalReport() {
     setProgress(0);
     setHasSearched(true);
     setResults([]);
+    setSearch("");
+    setStatusFilter("all");
 
     const newResults: GeneResult[] = [];
 
     for (let i = 0; i < geneListData.genes.length; i++) {
       const identifier = geneListData.genes[i];
+      const result = await queryIdentifier(identifier);
 
-      try {
-        const details = await getGeneDetails(identifier);
-        newResults.push({ identifier, details });
-      } catch (error) {
-        newResults.push({
-          identifier,
-          error:
-            error instanceof Error
-              ? error.message
-              : "No fue posible consultar este identificador.",
-        });
-      }
-
+      newResults.push(result);
       setResults([...newResults]);
       setProgress(i + 1);
     }
 
     setLoading(false);
   }
-  
-  const exportCSV = () => {
-    const headers = [
-      "Identificador consultado",
-      "Símbolo del gen",
-      "ID Ensembl",
-      "Accession UniProt",
-      "Descripción del gen",
-      "Función biológica",
-      "Procesos biológicos",
-      "Funciones moleculares",
-      "Localización celular",
-      "Vías biológicas",
-      "Estado de consulta",
-    ];
 
-    const escapeCSV = (value: unknown): string => {
-      const text = String(value ?? "");
-      return `"${text.replace(/"/g, '""')}"`;
-    };
+  async function retryResult(index: number) {
+    const identifier = results[index]?.identifier;
+    if (!identifier) return;
 
-    const rows = results.map((result) => {
-      const details = result.details;
-      const annotations = details?.annotations;
+    setRetrying(index);
 
-      return [
-        result.identifier,
-        details?.gene.symbol ?? "",
-        details?.gene.ensembl_id ?? "",
-        details?.protein.uniprot_accession ?? "",
-        details?.gene.description ?? "",
-        annotations?.function.join("; ") ?? "",
-        annotations?.biological_processes
-          .map((item) => `${item.id}: ${item.name}`)
-          .join("; ") ?? "",
-        annotations?.molecular_functions
-          .map((item) => `${item.id}: ${item.name}`)
-          .join("; ") ?? "",
-        annotations?.subcellular_location.join("; ") ?? "",
-        annotations?.pathways.join("; ") ?? "",
-        details ? "Consultado correctamente" : "No resuelto",
-      ];
-    });
+    const result = await queryIdentifier(identifier);
 
-    const csvContent = [
-      headers,
-      ...rows,
-    ]
-      .map((row) => row.map(escapeCSV).join(","))
-      .join("\r\n");
-
-    const blob = new Blob(
-      ["\uFEFF", csvContent],
-      { type: "text/csv;charset=utf-8;" }
+    setResults((previous) =>
+      previous.map((item, i) => (i === index ? result : item))
     );
+
+    setRetrying(null);
+  }
+
+  function exportCSV() {
+    const csvContent = buildReportCsv(results);
+    const blob = new Blob(["\uFEFF", csvContent], {
+      type: "text/csv;charset=utf-8;",
+    });
 
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
@@ -117,7 +146,7 @@ function FunctionalReport() {
     link.remove();
 
     URL.revokeObjectURL(url);
-  };
+  }
 
   if (!geneListData) {
     return (
@@ -136,8 +165,31 @@ function FunctionalReport() {
     );
   }
 
-  const successful = results.filter((result) => result.details);
-  const failed = results.filter((result) => result.error);
+  const completed = results.filter(
+    (result) => reportCategory(result) === "completed"
+  );
+  const partial = results.filter(
+    (result) => reportCategory(result) === "partial"
+  );
+  const notFound = results.filter(
+    (result) => reportCategory(result) === "not_found"
+  );
+  const failed = results.filter(
+    (result) => reportCategory(result) === "failed"
+  );
+
+  // Subconjunto visible según la búsqueda y el filtro, conservando el índice
+  // original para poder reintentar una consulta concreta.
+  const visibleResults = results
+    .map((result, index) => ({ result, index }))
+    .filter(({ result }) => {
+      const matchesStatus =
+        statusFilter === "all" || reportCategory(result) === statusFilter;
+
+      return matchesStatus && reportEntryMatchesQuery(result, search);
+    });
+
+  const isFiltering = search.trim() !== "" || statusFilter !== "all";
 
   return (
     <div className="page-container">
@@ -155,29 +207,35 @@ function FunctionalReport() {
             <h2>{geneListData.fileName}</h2>
             <p>{geneListData.genes.length} identificadores cargados</p>
           </div>
-        <div style={{ display: "flex", gap: "10px", flexWrap: "wrap" }}>
-          <button
-            type="button"
-            className="primary-button"
-            onClick={generateReport}
-            disabled={loading}
-          >
-            <Search size={18} />
-            {loading ? "Consultando..." : "Generar reporte"}
-          </button>
+          <div style={{ display: "flex", gap: "10px", flexWrap: "wrap" }}>
+            <button
+              type="button"
+              className="primary-button"
+              onClick={generateReport}
+              disabled={loading}
+            >
+              <Search size={18} />
+              {loading ? "Consultando..." : "Generar reporte"}
+            </button>
 
-          <button
-            type="button"
-            className="secondary-button"
-            onClick={exportCSV}
-            disabled={loading || results.length === 0}
-          >
-            <Download size={18} />
-            Exportar CSV
-          </button>
+            <button
+              type="button"
+              className="secondary-button"
+              onClick={exportCSV}
+              disabled={loading || results.length === 0}
+            >
+              <Download size={18} />
+              Exportar CSV
+            </button>
+          </div>
         </div>
 
-        </div>
+        <p className="gene-lookup-hint">
+          Fuentes consultadas: Ensembl (información del gen), UniProt
+          (proteína y anotaciones funcionales) y Gene Ontology (términos GO,
+          a través de UniProt). Las anotaciones se muestran en el idioma
+          original de la fuente.
+        </p>
 
         {loading && (
           <div className="gene-message" role="status">
@@ -188,139 +246,313 @@ function FunctionalReport() {
       </section>
 
       {hasSearched && !loading && (
-        <div className="results-summary">
+        <div className="results-summary states">
           <div>
-            <strong>{successful.length}</strong>
-            <span>Consultas exitosas</span>
+            <strong>{completed.length}</strong>
+            <span>Consultas completas</span>
+          </div>
+          <div>
+            <strong>{partial.length}</strong>
+            <span>Consultas parciales</span>
+          </div>
+          <div>
+            <strong>{notFound.length}</strong>
+            <span>Sin resultados</span>
           </div>
           <div>
             <strong>{failed.length}</strong>
-            <span>Identificadores sin resolver</span>
-          </div>
-          <div>
-            <strong>{results.length}</strong>
-            <span>Identificadores procesados</span>
+            <span>Errores</span>
           </div>
         </div>
       )}
 
-      {results.map((result, index) => (
+      {hasSearched && !loading && results.length > 0 && (
         <section
           className="card"
-          key={`${result.identifier}-${index}`}
-          style={{ padding: "24px", marginTop: "20px" }}
+          style={{ padding: "20px 24px", marginTop: "20px" }}
         >
-          {result.details ? (
-            <>
-              <div className="gene-detail-header">
+          <div className="report-filter-bar">
+            <div className="report-search">
+              <Search size={18} />
+              <input
+                type="text"
+                value={search}
+                onChange={(event) => setSearch(event.target.value)}
+                placeholder="Buscar por símbolo, identificador, Ensembl o UniProt"
+                aria-label="Buscar en los resultados del reporte"
+              />
+              {search !== "" && (
+                <button
+                  type="button"
+                  className="clear-search"
+                  onClick={() => setSearch("")}
+                  aria-label="Limpiar búsqueda"
+                >
+                  <X size={16} />
+                </button>
+              )}
+            </div>
+
+            <label className="report-filter-field">
+              <span>Estado</span>
+              <select
+                value={statusFilter}
+                onChange={(event) =>
+                  setStatusFilter(event.target.value as ReportStatusFilter)
+                }
+              >
+                <option value="all">Todos</option>
+                <option value="completed">Consultas completas</option>
+                <option value="partial">Consultas parciales</option>
+                <option value="not_found">Sin resultados</option>
+                <option value="failed">Con error</option>
+              </select>
+            </label>
+          </div>
+
+          <p className="report-filter-count">
+            Mostrando {visibleResults.length} de {results.length} identificadores
+            procesados.
+          </p>
+        </section>
+      )}
+
+      {visibleResults.map(({ result, index }) => {
+        const details = result.details;
+
+        if (result.error || !details) {
+          return (
+            <section
+              className="card"
+              key={`${result.identifier}-${index}`}
+              style={{ padding: "24px", marginTop: "20px" }}
+            >
+              <div className="gene-message error" role="alert">
+                <AlertCircle size={18} />
                 <div>
-                  <span className="detail-label">Gen consultado</span>
-                  <h2>{result.details.gene.symbol}</h2>
+                  <strong>{result.identifier}</strong>
+                  <p>{result.error}</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                className="secondary-button"
+                style={{ marginTop: "12px" }}
+                onClick={() => void retryResult(index)}
+                disabled={retrying === index}
+              >
+                <RefreshCw size={16} />
+                {retrying === index ? "Reintentando..." : "Reintentar"}
+              </button>
+            </section>
+          );
+        }
+
+        const tone = queryStatusTone(details.status);
+        const hasGeneData =
+          details.status === "ok" || details.status === "partial";
+
+        return (
+          <section
+            className="card"
+            key={`${result.identifier}-${index}`}
+            style={{ padding: "24px", marginTop: "20px" }}
+          >
+            <div className="gene-detail-header">
+              <div>
+                <span className="detail-label">
+                  Identificador consultado: {details.identifier}
+                </span>
+                <h2>
+                  {details.gene.symbol ||
+                    details.protein.uniprot_accession ||
+                    details.identifier}
+                </h2>
+                <p>
+                  {details.gene.description ||
+                    details.protein.recommended_name ||
+                    details.message ||
+                    "Sin descripción disponible."}
+                </p>
+              </div>
+              {details.status === "ok" && (
+                <CheckCircle size={22} color="#0f766e" />
+              )}
+              {details.status === "partial" && (
+                <AlertCircle size={22} color="#b45309" />
+              )}
+            </div>
+
+            <div className="source-status-list">
+              <SourceChip name="Ensembl" info={details.sources.ensembl} />
+              <SourceChip name="UniProt" info={details.sources.uniprot} />
+              <span className="gene-meta-chip">
+                {queryStatusLabel(details.status)}
+              </span>
+            </div>
+
+            {details.status === "not_found" && (
+              <div className={toneToMessageClass(tone)} role="status">
+                <Info size={18} />
+                <div>
+                  <strong>No se encontró en las fuentes consultadas</strong>
                   <p>
-                    {result.details.gene.description ||
-                      "No hay una descripción disponible."}
+                    {details.message} Esto no demuestra que el gen no exista
+                    biológicamente: puede usar otro símbolo o no estar
+                    registrado en las fuentes consultadas.
                   </p>
                 </div>
-                <CheckCircle size={22} color="#0f766e" />
               </div>
+            )}
 
-              <div className="gene-identifiers">
-                <div>
-                  <span>Ensembl</span>
-                  <strong>
-                    {result.details.gene.ensembl_id || "No disponible"}
-                  </strong>
+            {details.status === "unavailable" && (
+              <>
+                <div className={toneToMessageClass(tone)} role="status">
+                  <AlertCircle size={18} />
+                  <div>
+                    <strong>Fuente no disponible</strong>
+                    <p>
+                      {details.message} No se puede confirmar si el gen existe.
+                    </p>
+                  </div>
                 </div>
+                <button
+                  type="button"
+                  className="secondary-button"
+                  style={{ marginTop: "12px" }}
+                  onClick={() => void retryResult(index)}
+                  disabled={retrying === index}
+                >
+                  <RefreshCw size={16} />
+                  {retrying === index ? "Reintentando..." : "Reintentar"}
+                </button>
+              </>
+            )}
+
+            {details.status === "invalid_identifier" && (
+              <div className={toneToMessageClass(tone)} role="alert">
+                <AlertCircle size={18} />
                 <div>
-                  <span>UniProt</span>
-                  <strong>
-                    {result.details.protein.uniprot_accession ||
+                  <strong>Identificador no admitido</strong>
+                  <p>{details.message}</p>
+                </div>
+              </div>
+            )}
+
+            {hasGeneData && (
+              <>
+                {details.status === "partial" && (
+                  <div className={toneToMessageClass("warning")} role="status">
+                    <AlertCircle size={18} />
+                    <div>
+                      <strong>Consulta parcial</strong>
+                      <p>
+                        Se conserva la información disponible. La fuente que
+                        falló se indica arriba y puede reintentarse.
+                      </p>
+                    </div>
+                  </div>
+                )}
+
+                <div className="gene-identifiers">
+                  <div>
+                    <span>Ensembl</span>
+                    <strong>
+                      {details.gene.ensembl_id || "No disponible"}
+                    </strong>
+                  </div>
+                  <div>
+                    <span>UniProt</span>
+                    <strong>
+                      {details.protein.uniprot_accession || "No disponible"}
+                    </strong>
+                  </div>
+                </div>
+
+                <div className="gene-section">
+                  <h3>Función biológica descrita</h3>
+
+                  <p className="gene-lookup-hint">
+                    Anotación original procedente de UniProt. El texto se
+                    conserva en el idioma proporcionado por la fuente para
+                    mantener su precisión científica.
+                  </p>
+
+                  {details.annotations.function.length > 0 ? (
+                    details.annotations.function.map((item, i) => (
+                      <p key={`${i}-${item}`}>{item}</p>
+                    ))
+                  ) : (
+                    <p>
+                      {details.sources.uniprot.status === "not_found"
+                        ? "UniProt no tiene una función descrita para este registro."
+                        : "No hay información funcional disponible."}
+                    </p>
+                  )}
+                </div>
+
+                <div className="gene-section">
+                  <h3>Procesos biológicos</h3>
+                  {details.annotations.biological_processes.length > 0 ? (
+                    <ul>
+                      {details.annotations.biological_processes.map((item) => (
+                        <li key={item.id}>
+                          {item.name}
+                          <span className="gene-go-id">{item.id}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <p>No hay procesos biológicos anotados.</p>
+                  )}
+                </div>
+
+                <div className="gene-section">
+                  <h3>Funciones moleculares</h3>
+                  {details.annotations.molecular_functions.length > 0 ? (
+                    <ul>
+                      {details.annotations.molecular_functions.map((item) => (
+                        <li key={item.id}>
+                          {item.name}
+                          <span className="gene-go-id">{item.id}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <p>No hay funciones moleculares anotadas.</p>
+                  )}
+                </div>
+
+                <div className="gene-section">
+                  <h3>Localización celular y vías</h3>
+                  <p>
+                    <strong>Localización:</strong>{" "}
+                    {details.annotations.subcellular_location.join("; ") ||
                       "No disponible"}
-                  </strong>
+                  </p>
+                  <p>
+                    <strong>Vías:</strong>{" "}
+                    {details.annotations.pathways.join("; ") ||
+                      "No disponibles"}
+                  </p>
                 </div>
-              </div>
+              </>
+            )}
+          </section>
+        );
+      })}
 
-              
-              <div className="gene-section">
-                <h3>Función biológica descrita</h3>
-
-                <p className="gene-lookup-hint">
-                  Anotación original procedente de UniProt. El texto se conserva
-                  en el idioma proporcionado por la fuente para mantener su
-                  precisión científica.
-                </p>
-
-                {result.details.annotations.function.length > 0 ? (
-                  result.details.annotations.function.map((item, i) => (
-                    <p key={`${i}-${item}`}>{item}</p>
-                  ))
-                ) : (
-                  <p>No hay información funcional disponible.</p>
-                )}
-              </div>
-
-
-              <div className="gene-section">
-                <h3>Procesos biológicos</h3>
-                {result.details.annotations.biological_processes.length > 0 ? (
-                  <ul>
-                    {result.details.annotations.biological_processes.map(
-                      (item) => (
-                        <li key={item.id}>
-                          {item.name}{" "}
-                          <span className="gene-go-id">{item.id}</span>
-                        </li>
-                      )
-                    )}
-                  </ul>
-                ) : (
-                  <p>No hay procesos biológicos anotados.</p>
-                )}
-              </div>
-
-              <div className="gene-section">
-                <h3>Funciones moleculares</h3>
-                {result.details.annotations.molecular_functions.length > 0 ? (
-                  <ul>
-                    {result.details.annotations.molecular_functions.map(
-                      (item) => (
-                        <li key={item.id}>
-                          {item.name}{" "}
-                          <span className="gene-go-id">{item.id}</span>
-                        </li>
-                      )
-                    )}
-                  </ul>
-                ) : (
-                  <p>No hay funciones moleculares anotadas.</p>
-                )}
-              </div>
-
-              <div className="gene-section">
-                <h3>Localización celular y vías</h3>
-                <p>
-                  <strong>Localización:</strong>{" "}
-                  {result.details.annotations.subcellular_location.join("; ") ||
-                    "No disponible"}
-                </p>
-                <p>
-                  <strong>Vías:</strong>{" "}
-                  {result.details.annotations.pathways.join("; ") ||
-                    "No disponibles"}
-                </p>
-              </div>
-            </>
-          ) : (
-            <div className="gene-message error" role="alert">
-              <AlertCircle size={18} />
-              <div>
-                <strong>{result.identifier}</strong>
-                <p>{result.error}</p>
-              </div>
-            </div>
-          )}
-        </section>
-      ))}
+      {hasSearched &&
+        !loading &&
+        results.length > 0 &&
+        visibleResults.length === 0 && (
+          <div className="gene-message info" role="status">
+            <Info size={18} />
+            {isFiltering
+              ? "Ningún identificador coincide con la búsqueda o el filtro seleccionado."
+              : "No hay identificadores que mostrar."}
+          </div>
+        )}
 
       {hasSearched && !loading && results.length === 0 && (
         <div className="gene-message">

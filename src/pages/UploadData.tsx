@@ -6,11 +6,16 @@ import {
   X,
   CheckCircle,
   AlertCircle,
+  ArrowRight,
 } from "lucide-react";
+import { useNavigate } from "react-router-dom";
 import { useExpressionData } from "../context/ExpressionDataContext";
+
+const MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024;
 
 function UploadData() {
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const navigate = useNavigate();
   const { geneListData, setGeneListData } = useExpressionData();
 
   const [fileName, setFileName] = useState("");
@@ -18,6 +23,8 @@ function UploadData() {
   const [duplicates, setDuplicates] = useState<string[]>([]);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
+
+  const hasValidList = !!geneListData && geneListData.genes.length > 0;
 
   function handleFile(file?: File) {
     setError("");
@@ -37,6 +44,14 @@ function UploadData() {
 
     if (file.size === 0) {
       setError("El archivo está vacío.");
+      return;
+    }
+
+    if (file.size > MAX_FILE_SIZE_BYTES) {
+      setError(
+        "El archivo supera el tamaño máximo permitido (10 MB). " +
+          "Divide la lista en archivos más pequeños."
+      );
       return;
     }
 
@@ -273,14 +288,27 @@ function UploadData() {
               <p>{genes.length} identificadores únicos</p>
             </div>
 
-            <button
-              type="button"
-              className="secondary-button"
-              onClick={clearFile}
-            >
-              <X size={16} />
-              Quitar archivo
-            </button>
+            <div className="upload-preview-actions">
+              {hasValidList && (
+                <button
+                  type="button"
+                  className="primary-button"
+                  onClick={() => navigate("/resultados")}
+                >
+                  <ArrowRight size={18} />
+                  Ver reporte funcional
+                </button>
+              )}
+
+              <button
+                type="button"
+                className="secondary-button"
+                onClick={clearFile}
+              >
+                <X size={16} />
+                Quitar archivo
+              </button>
+            </div>
           </div>
 
           <div className="table-container">
@@ -311,9 +339,22 @@ function UploadData() {
         </section>
       )}
 
-      {!fileName && geneListData && (
+      {!fileName && geneListData && geneListData.genes.length > 0 && (
         <div className="gene-message">
-          Hay una lista previamente cargada: {geneListData.fileName}.
+          <FileText size={18} />
+          Hay una lista previamente cargada: {geneListData.fileName} (
+          {geneListData.genes.length} identificadores).
+          <div>
+            <button
+              type="button"
+              className="primary-button"
+              style={{ marginTop: "12px" }}
+              onClick={() => navigate("/resultados")}
+            >
+              <ArrowRight size={18} />
+              Ver reporte funcional
+            </button>
+          </div>
         </div>
       )}
     </div>

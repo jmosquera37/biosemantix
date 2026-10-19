@@ -1,44 +1,15 @@
 
-import {
-  Home,
-  Upload,
-  FileText,
-  Database,
-  Settings,
-  Activity,
-} from "lucide-react";
+import { Activity } from "lucide-react";
 
 import { NavLink } from "react-router-dom";
 
-const menuItems = [
-  {
-    name: "Inicio",
-    path: "/inicio",
-    icon: Home,
-  },
-  {
-    name: "Cargar lista de genes",
-    path: "/cargar-datos",
-    icon: Upload,
-  },
-  {
-    name: "Reporte funcional",
-    path: "/resultados",
-    icon: FileText,
-  },
-  {
-    name: "Bases de datos",
-    path: "/bases-de-datos",
-    icon: Database,
-  },
-  {
-    name: "Configuración",
-    path: "/configuracion",
-    icon: Settings,
-  },
-];
+import { navigationItems } from "../config/navigation";
+import { useBackendStatus } from "../context/BackendStatusContext";
+import { BACKEND_STATUS_LABELS } from "../utils/backendStatus";
 
 function Sidebar() {
+  const { status } = useBackendStatus();
+
   return (
     <aside className="sidebar">
       <div className="sidebar-logo">
@@ -47,7 +18,7 @@ function Sidebar() {
       </div>
 
       <nav className="sidebar-menu">
-        {menuItems.map((item) => {
+        {navigationItems.map((item) => {
           const Icon = item.icon;
 
           return (
@@ -66,12 +37,15 @@ function Sidebar() {
         })}
       </nav>
 
-      <div className="processing-status">
-        <span className="status-dot"></span>
+      <div
+        className="backend-status"
+        title="Estado del servicio de BioSemantix (backend)"
+      >
+        <span className={`status-dot ${status}`}></span>
 
         <div>
-          <strong>Procesamiento local</strong>
-          <small>Activo</small>
+          <strong>Backend</strong>
+          <small>{BACKEND_STATUS_LABELS[status]}</small>
         </div>
       </div>
     </aside>
