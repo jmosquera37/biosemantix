@@ -1,7 +1,8 @@
+
 import {
   Home,
   Upload,
-  BarChart3,
+  FileText,
   Database,
   Settings,
   Activity,
@@ -12,18 +13,18 @@ import { NavLink } from "react-router-dom";
 const menuItems = [
   {
     name: "Inicio",
-    path: "/",
+    path: "/inicio",
     icon: Home,
   },
   {
-    name: "Cargar datos",
+    name: "Cargar lista de genes",
     path: "/cargar-datos",
     icon: Upload,
   },
   {
-    name: "Resultados",
+    name: "Reporte funcional",
     path: "/resultados",
-    icon: BarChart3,
+    icon: FileText,
   },
   {
     name: "Bases de datos",
@@ -53,6 +54,7 @@ function Sidebar() {
             <NavLink
               key={item.path}
               to={item.path}
+              end={item.path === "/"}
               className={({ isActive }) =>
                 `sidebar-link ${isActive ? "active" : ""}`
               }

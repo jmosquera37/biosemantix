@@ -1,3 +1,5 @@
+import { getGeneBySymbol } from "../services/ensembl";
+import { getProteinByGene } from "../services/uniprot";
 import {
   Activity,
   FileText,
@@ -6,6 +8,22 @@ import {
 } from "lucide-react";
 
 function Dashboard() {
+  const testEnsembl = async () => {
+    try {
+      const gene = await getGeneBySymbol("BRCA1");
+      console.log("Resultado de Ensembl:", gene);
+    } catch (error) {
+      console.error("Error consultando Ensembl:", error);
+    }
+  };
+  const testUniProt = async () => {
+    try {
+      const protein = await getProteinByGene("BRCA1");
+      console.log("Resultado de UniProt:", protein);
+    } catch (error) {
+      console.error("Error consultando UniProt:", error);
+    }
+  };
   return (
     <div className="dashboard">
       <section className="welcome-section">
@@ -79,6 +97,14 @@ function Dashboard() {
             </div>
           </button>
         </div>
+
+        {/* Prueba temporal de Ensembl */}
+        <button onClick={testEnsembl}>
+          Probar Ensembl
+        </button>
+        <button onClick={testUniProt}>
+          Probar UniProt
+        </button>
       </section>
     </div>
   );

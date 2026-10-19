@@ -1,0 +1,61 @@
+```html
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <title>Iconos BioSemantix</title>
+</head>
+<body style="font-family: Arial; text-align: center; padding: 30px;">
+  <h1>Iconos de BioSemantix</h1>
+  <p>Haz clic en cada botón para guardar el icono PNG.</p>
+
+  <svg id="logo" xmlns="http://www.w3.org/2000/svg"
+       width="512" height="512" viewBox="0 0 512 512">
+    <path d="M305 25 L120 270 Q110 285 135 285
+             L230 285 L195 465 Q190 490 210 470
+             L400 225 Q415 205 390 205
+             L295 205 L325 45 Q330 20 305 25 Z"
+          fill="#8B5CF6"/>
+  </svg>
+
+  <div>
+    <button onclick="guardar(192)">Guardar 192 × 192</button>
+    <button onclick="guardar(512)">Guardar 512 × 512</button>
+  </div>
+
+  <script>
+    function guardar(tamano) {
+      const svg = document.getElementById('logo').cloneNode(true);
+      svg.setAttribute('width', tamano);
+      svg.setAttribute('height', tamano);
+
+      const blob = new Blob(
+        [new XMLSerializer().serializeToString(svg)],
+        { type: 'image/svg+xml;charset=utf-8' }
+      );
+
+      const url = URL.createObjectURL(blob);
+      const img = new Image();
+
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        canvas.width = tamano;
+        canvas.height = tamano;
+        canvas.getContext('2d').drawImage(img, 0, 0, tamano, tamano);
+
+        canvas.toBlob(png => {
+          const enlace = document.createElement('a');
+          enlace.href = URL.createObjectURL(png);
+          enlace.download = `pwa-${tamano}x${tamano}.png`;
+          enlace.click();
+          URL.revokeObjectURL(enlace.href);
+          URL.revokeObjectURL(url);
+        }, 'image/png');
+      };
+
+      img.src = url;
+    }
+  </script>
+</body>
+</html>
+```
